@@ -39,9 +39,12 @@
 
 # debug information files
 *.dwo
+<<<<<<< HEAD
 
 #### My custom ignore file lists
 
 .vscode/
 .xmake/
 build/
+=======
+>>>>>>> 40ceb8e8cab3073d88e85e56b23da45aa3668af5
