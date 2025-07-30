@@ -21,18 +21,12 @@
 #include <string>
 
 #include "util.h"
+#include "boost-lock-free-queue.h"
+#include "adapterQueueTest.h"
 
 struct Data {
     char buf[1024]; // 1KB
 };
-
-
-void pause_for_check(const std::string& msg) {
-    LogMemorySnapshot(msg);
-    SPDLOG_INFO("");
-    // SPDLOG_INFO("\n>>>> {}，请用任务管理器/`top`等工具观察进程内存。按下回车继续...", msg);
-    // std::cin.get();
-}
 
 struct PartInfoLog
 {
@@ -308,11 +302,18 @@ int main(){
     spdlog::set_default_logger(gain_logger("sg_common"));
     spdlog::flush_on(spdlog::level::err);
     spdlog::flush_every(std::chrono::seconds(3));
-    void ResetLoggerPattern();
+    ResetLoggerPattern();
 
     SPDLOG_INFO("main start");
 
-    DoTest();
+    //DoTest();
+
+    //TestBoostLockFreeQueueSizeCanExpand();
+
+    //TestBoostLockFreeQueueThreadSafe();
+
+    TestAdapterQueue();
+
     //while loop
     // std::string line;
     // while (std::getline(std::cin, line)) {

@@ -32,10 +32,20 @@ std::shared_ptr<spdlog::logger> gain_logger(const std::string& name)
 
     // 4. 创建异步logger
     auto async_logger = spdlog::create_async<spdlog::sinks::hourly_file_sink_mt>(name, log_path.string());
-    async_logger->set_pattern("%Y-%m-%d %H:%M:%S.%e [%l] %v");
+    //async_logger->set_pattern("%Y-%m-%d %H:%M:%S.%e [%l] %v");
     async_logger->flush_on(spdlog::level::info);
 
     return async_logger;
+}
+
+void ResetLoggerPattern()
+{
+    const std::string pattern = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%t] [%s:%#] [%!] %v";
+    //Notice: 由于前面已经调用了spdlog::set_default_logger(gain_logger("sg_common"));
+    //set_default_logger内部会调用std::move(sg_common_logger),因此后续再去调用gain_logger("sg_common")则会创建一个新的looger了，不再是本来的sg_common_logger了!
+    //gain_logger("sg_common")->set_pattern(pattern);
+
+    spdlog::default_logger()->set_pattern(pattern);
 }
 
 // 内存统计结构体
@@ -107,4 +117,11 @@ void LogMemorySnapshot(const std::string& context/* = ""*/)
     }
     
     SPDLOG_INFO("[Snapshot #{}] {}", snapshot_count, message);
+}
+
+void pause_for_check(const std::string& msg) {
+    LogMemorySnapshot(msg);
+    SPDLOG_INFO("");
+    // SPDLOG_INFO("\n>>>> {}，请用任务管理器/`top`等工具观察进程内存。按下回车继续...", msg);
+    // std::cin.get();
 }
