@@ -1,12 +1,11 @@
 #pragma once
-
 #include <deque>
 #include <mutex>
 #include <condition_variable>
 #include <optional>
-
 #include "util.h"
 
+// 自动收缩的线程安全阻塞队列
 template <typename T>
 class AutoShrinkBlockingQueue {
 public:
@@ -82,7 +81,8 @@ private:
         // 每 shrink_check_interval 次pop后检测一次
         if (op_count_ >= shrink_check_interval_) {
             op_count_ = 0;
-            if (!queue_.empty() && queue_.size() < last_high_mark_ * shrink_factor_) {
+            // === 优化: 空队列也允许 shrink，这样内存和 high_mark 也能归零，行为语义更自然 ===
+            if (queue_.empty() || queue_.size() < last_high_mark_ * shrink_factor_) {
                 ////test
                 // {
                 //     SPDLOG_INFO("[Before auto_shrink], queue size:{}, old_last_high_mark:{}, shrink_factor_:{}, last_high_mark_ * shrink_factor_ = {}", 
@@ -90,10 +90,14 @@ private:
                 //     LogMemorySnapshot("[Before auto_shrink]");
                 // }
                 {
-                    std::deque<T> newq;
-                    newq.insert(newq.end(), queue_.begin(), queue_.end());
+                    // 用move迭代器高效转移（支持move-only类型，无拷贝)
+                    // 如果元素类型不可 move，可fallback到常规 copy 构造法
+                    std::deque<T> newq(
+                        std::make_move_iterator(queue_.begin()), 
+                        std::make_move_iterator(queue_.end())
+                    );
                     queue_.swap(newq);
-                    last_high_mark_ = queue_.size();
+                    last_high_mark_ = queue_.size(); // 空时会归零
                 }
                 // {
                 //     SPDLOG_INFO("[After auto_shrink], queue size:{}, new_last_high_mark:{}, shrink_factor_:{}, last_high_mark_ * shrink_factor_ = {}", 
@@ -107,7 +111,6 @@ private:
     mutable std::mutex mutex_;
     std::condition_variable cond_empty_;
     std::deque<T> queue_;
-
     // shrink参数及内部高水位
     size_t shrink_check_interval_;
     float shrink_factor_;
