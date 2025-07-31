@@ -196,6 +196,8 @@ target("benchmark-stl-test")
 --xmake
 --3)运行全部单元测试
 --xmake run unit_tests
+-- or 
+---- xmake test 
 
 -- 单元测试 target
 if has_config("test") then
