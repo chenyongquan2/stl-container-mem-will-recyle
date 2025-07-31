@@ -7,11 +7,13 @@
 #include <mutex>
 #include <optional>
 #include <chrono>
+#include <string>
+#include <memory>
 
 // ====================== 基本单线程功能 =============================
-
 TEST(ThreadSafeQueueTest, EmptyOnConstruction) {
     ThreadSafeQueue<int> q;
+    // empty/size仅做快照信息观测，不可做业务并发逻辑判据
     EXPECT_TRUE(q.empty());
     EXPECT_EQ(q.size(), 0u);
 }
@@ -21,7 +23,6 @@ TEST(ThreadSafeQueueTest, PushPopSingleThread) {
     q.push(42);
     EXPECT_FALSE(q.empty());
     EXPECT_EQ(q.size(), 1u);
-
     int val = q.pop();
     EXPECT_EQ(val, 42);
     EXPECT_TRUE(q.empty());
@@ -52,7 +53,7 @@ TEST(ThreadSafeQueueTest, PopWithMultipleElementsOrder) {
     EXPECT_TRUE(q.empty());
 }
 
-// ====================== 移动语义功能 =============================
+// ====================== 移动语义和emplace功能 =============================
 struct Movable {
     int value;
     bool moved = false;
@@ -79,19 +80,25 @@ TEST(ThreadSafeQueueTest, PushRvalueMoveChecked) {
     EXPECT_EQ(m.value, 0);      // 源对象已被move置零
 }
 
-// ====================== 多线程功能&同步正确性 =============================
+TEST(ThreadSafeQueueTest, EmplaceWorks) {
+    ThreadSafeQueue<Movable> q;
+    q.emplace(456); // 直接构造
+    auto popped = q.try_pop();
+    ASSERT_TRUE(popped.has_value());
+    EXPECT_EQ(popped->value, 456);
+    EXPECT_TRUE(popped->moved); // pop时move出来
+}
 
+// ====================== 多线程功能&同步正确性 =============================
 TEST(ThreadSafeQueueTest, ProducerConsumerDataIntegrity) {
     constexpr int thread_count = 8;
     constexpr int per_thread_items = 1000;
     const int total = thread_count * per_thread_items;
-
     ThreadSafeQueue<int> q;
     std::atomic<int> sum{0};
     std::vector<std::thread> producers;
     std::set<int> all_results;
     std::mutex set_mutex;
-
     // 启动生产者
     for (int t = 0; t < thread_count; ++t) {
         producers.emplace_back([&q, t] {
@@ -100,7 +107,6 @@ TEST(ThreadSafeQueueTest, ProducerConsumerDataIntegrity) {
             }
         });
     }
-
     // 启动消费者
     std::vector<std::thread> consumers;
     for (int t = 0; t < thread_count; ++t) {
@@ -113,11 +119,9 @@ TEST(ThreadSafeQueueTest, ProducerConsumerDataIntegrity) {
             }
         });
     }
-
     for (auto& th : producers) th.join();
     for (auto& th : consumers) th.join();
-
-    // 所有producer产出的数据都应被消费且无重复
+    // 检查所有元素均被消费，无重复
     EXPECT_EQ(all_results.size(), total);
     int expect_sum = total * (total - 1) / 2;
     EXPECT_EQ(sum, expect_sum);
@@ -129,7 +133,6 @@ TEST(ThreadSafeQueueTest, TryPopMultiThreaded) {
     ThreadSafeQueue<int> q;
     constexpr int N = 1000;
     for (int i = 0; i < N; ++i) q.push(i);
-
     std::atomic<int> popped{0};
     std::vector<std::thread> threads;
     for (int t = 0; t < 4; ++t) {
@@ -156,28 +159,28 @@ TEST(ThreadSafeQueueTest, PopBlocksUntilPush) {
         result = q.pop();
     });
     while (!started) std::this_thread::yield();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 更确保阻塞
+    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 确保consumer阻塞一会儿
     q.push(999);
     consumer.join();
     EXPECT_EQ(result, 999);
 }
 
-// ========== 队列空/size安全并发访问检测（非功能性压力） ==========
+// ========== 队列空/size安全并发访问检测 ==========
 TEST(ThreadSafeQueueTest, SizeAndEmptyMultiThreadedSafe) {
     ThreadSafeQueue<int> q;
     constexpr int N = 10000;
     std::atomic<bool> done{false};
-
     std::thread writer([&]() {
         for (int i = 0; i < N; ++i) q.push(i);
         done = true;
     });
+    // empty/size仅作为观测快照，不做业务判断
     while (!done) {
         q.size();
         q.empty();
     }
     writer.join();
-    EXPECT_GE(q.size(), 0u); // 不作功能断言，只要没deadlock
+    EXPECT_GE(q.size(), 0u); // 只要没死锁即可
 }
 
 // ========== 边界和异常用例 ==========
